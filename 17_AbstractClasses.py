@@ -1,115 +1,88 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Approval Form</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #eef2f7;
-            padding: 40px;
+if request.method == 'GET' and 'term' in request.GET:
+        term = request.GET.get('term', '')
+        with connection.cursor() as cursor:
+            cursor.execute(
+                '''
+                SELECT ee_full_nm
+                FROM ppl_pltfrm_emp_data
+                WHERE ee_full_nm LIKE %s
+                LIMIT 10
+                ''',
+                [f"%{term}%"]
+            )
+            names = [row[0] for row in cursor.fetchall()]
+        return JsonResponse(names, safe=False)
+
+
+
+
+
+@login_required
+def form_dropdown_page(request, intake_form_id):
+    if request.method == 'GET':
+        # Fetch top 10 names from DB for dropdowns
+        with connection.cursor() as cursor:
+            cursor.execute(
+                '''
+                SELECT ee_full_nm
+                FROM ppl_pltfrm_emp_data
+                LIMIT 10
+                '''
+            )
+            names = [row[0] for row in cursor.fetchall()]
+
+        context = {
+            'intake_form_id': intake_form_id,
+            'names': names,
         }
+        return render(request, 'intake/form_dropdown.html', context)
 
-        form {
-            max-width: 600px;
-            margin: auto;
-            background: #fff;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
+    elif request.method == 'POST':
+        user_id = request.user.id
+        try:
+            dba_approval = request.POST.get('dba_approval', 'No') == 'Yes'
+            director_approval = request.POST.get('director_approval', 'No') == 'Yes'
+            data_gov_approval = request.POST.get('data_gov_approval', 'No') == 'Yes'
 
-        label {
-            font-weight: bold;
-            display: block;
-            margin-top: 20px;
-        }
+            director_names = request.POST.getlist('director_name')  # list of selected director names
+            dba_persons = request.POST.getlist('dba_person')        # list of selected dba persons
+            dur_number = request.POST.get('dur_number', '')
 
-        input[type="text"] {
-            padding: 10px;
-            width: 100%;
-            box-sizing: border-box;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            margin-top: 8px;
-        }
+            # Convert list to comma separated string to save in DB
+            director_names_str = ','.join(director_names)
+            dba_persons_str = ','.join(dba_persons)
 
-        .hidden {
-            display: none;
-        }
+        except Exception as e:
+            return JsonResponse({'error': 'Invalid form data: ' + str(e)}, status=400)
 
-        datalist {
-            max-height: 150px;
-            overflow-y: auto;
-        }
+        insert_or_update_approvals_query = '''
+            INSERT INTO form_approvals (intake_form_id, dba_approval_check, director_approval_check, data_gov_approval_check,
+                                        dba_person, director_name, dur_number)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+            dba_approval_check = VALUES(dba_approval_check),
+            director_approval_check = VALUES(director_approval_check),
+            data_gov_approval_check = VALUES(data_gov_approval_check),
+            dba_person = VALUES(dba_person),
+            director_name = VALUES(director_name),
+            dur_number = VALUES(dur_number)
+        '''
+        update_intake_form_status_query = '''
+            UPDATE intake_form
+            SET status = 'Pending Approval'
+            WHERE id = %s AND creator_id = %s
+        '''
 
-        button {
-            margin-top: 30px;
-            padding: 12px 25px;
-            font-size: 16px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(insert_or_update_approvals_query, [
+                    intake_form_id, dba_approval, director_approval, data_gov_approval,
+                    dba_persons_str, director_names_str, dur_number
+                ])
+                cursor.execute(update_intake_form_status_query, [intake_form_id, user_id])
+            return JsonResponse({'message': 'Form approvals and status updated successfully.'})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
 
-        button:hover {
-            background-color: #0056b3;
-        }
-    </style>
-</head>
-<body>
-
-<h2 style="text-align: center;">Approval Form</h2>
-
-<form method="POST" action="{% url 'form_dropdown_page' intake_form_id=intake_form_id %}">
-    {% csrf_token %}
-
-    <!-- Director -->
-    <label>
-        <input type="checkbox" id="directorCheckbox"> Director Approval
-    </label>
-    <div id="directorInputWrapper" class="hidden">
-        <input type="text" id="directorInput" name="director_name" list="directorList" placeholder="Type Director Name...">
-        <datalist id="directorList">
-            {% for name in names %}
-                <option value="{{ name }}">
-            {% endfor %}
-        </datalist>
-    </div>
-
-    <!-- DBA -->
-    <label>
-        <input type="checkbox" id="dbaCheckbox"> DBA Approval
-    </label>
-    <div id="dbaInputWrapper" class="hidden">
-        <input type="text" id="dbaInput" name="dba_person" list="dbaList" placeholder="Type DBA Name...">
-        <datalist id="dbaList">
-            {% for name in names %}
-                <option value="{{ name }}">
-            {% endfor %}
-        </datalist>
-    </div>
-
-    <!-- DUR Number -->
-    <label for="dur">DUR Number:</label>
-    <input type="text" id="dur" name="dur_number" placeholder="Enter DUR Number">
-
-    <button type="submit">Submit</button>
-</form>
-
-<script>
-    document.getElementById('directorCheckbox').addEventListener('change', function () {
-        const inputWrapper = document.getElementById('directorInputWrapper');
-        inputWrapper.classList.toggle('hidden', !this.checked);
-    });
-
-    document.getElementById('dbaCheckbox').addEventListener('change', function () {
-        const inputWrapper = document.getElementById('dbaInputWrapper');
-        inputWrapper.classList.toggle('hidden', !this.checked);
-    });
-</script>
-
-</body>
-</html>
+    else:
+        return JsonResponse({'error': 'Invalid request method'}, status=405)
