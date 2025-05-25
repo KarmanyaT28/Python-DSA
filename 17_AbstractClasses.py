@@ -1,25 +1,13 @@
-from abc import ABC, abstractmethod
-
-class Animal(ABC):
-    @abstractmethod
-    def speak(self):
-        pass  # Must be implemented in child classes
-
-class Dog(Animal):
-    def speak(self):
-        return "Bark."
-
-class Cat(Animal):
-    def speak(self):
-        return "Meow."
-
-# Attempting to instantiate an abstract class will result in an error
-# animal = Animal()  # TypeError: Can't instantiate abstract class
-
-# Correct usage
-dog = Dog()
-cat = Cat()
-
-print(dog.speak())  # Output: Bark.
-print(cat.speak())  # Output: Meow.
-
+.dropdown-prompt{
+                display: none;
+               position: fixed;
+               top: 50%;
+               left: 50%;
+               transform: translate(-50%, -50%);
+               background-color: white;
+               padding: 20px;
+               box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+               border-radius: 10px;
+               z-index: 1000;
+    
+           }
